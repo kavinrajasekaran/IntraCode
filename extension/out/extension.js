@@ -39,8 +39,13 @@ const vscode = __importStar(require("vscode"));
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const http = __importStar(require("http"));
 let brokerProcess = null;
 let statusBarItem;
+let pollTimer;
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 function getNonce() {
     let text = '';
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -53,9 +58,8 @@ function getPort() {
 }
 function resolveBrokerPath() {
     const configured = vscode.workspace.getConfiguration('intracode').get('brokerPath', '');
-    if (configured)
+    if (configured && fs.existsSync(configured))
         return configured;
-    // Auto-detect: look relative to workspace folders
     const folders = vscode.workspace.workspaceFolders;
     if (folders) {
         for (const f of folders) {
@@ -64,65 +68,139 @@ function resolveBrokerPath() {
                 return candidate;
         }
     }
-    // Last resort: relative to extension output dir (extension/out → IntraCode/dist)
+    // Relative to extension installation: extension/out/extension.js → IntraCode/dist/api-server.js
     const fromExtension = path.join(__dirname, '..', '..', 'dist', 'api-server.js');
     if (fs.existsSync(fromExtension))
         return fromExtension;
     return null;
 }
+// ---------------------------------------------------------------------------
+// Status bar
+// ---------------------------------------------------------------------------
 function setStatus(online) {
-    statusBarItem.text = online ? '$(circle-filled) IntraCode Broker' : '$(circle-outline) IntraCode Broker';
-    statusBarItem.tooltip = online ? `Broker running on port ${getPort()}` : 'Broker stopped — click to start';
-    statusBarItem.backgroundColor = online
-        ? undefined
-        : new vscode.ThemeColor('statusBarItem.warningBackground');
+    if (online) {
+        statusBarItem.text = '$(circle-filled) IntraCode';
+        statusBarItem.tooltip = `IntraCode Broker running on port ${getPort()} — click to open dashboard`;
+        statusBarItem.backgroundColor = undefined;
+        statusBarItem.color = new vscode.ThemeColor('statusBarItem.prominentForeground');
+    }
+    else {
+        statusBarItem.text = '$(circle-outline) IntraCode';
+        statusBarItem.tooltip = 'IntraCode Broker offline — click to open dashboard';
+        statusBarItem.color = undefined;
+        statusBarItem.backgroundColor = undefined;
+    }
 }
-function startBrokerServer() {
-    if (brokerProcess)
+// ---------------------------------------------------------------------------
+// Health check + polling
+// ---------------------------------------------------------------------------
+function checkIsRunning(port) {
+    return new Promise((resolve) => {
+        const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 1000 }, (res) => {
+            resolve(res.statusCode === 200);
+            res.resume();
+        });
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.end();
+    });
+}
+async function syncStatus() {
+    const running = await checkIsRunning(getPort());
+    setStatus(running);
+}
+function startPolling() {
+    if (pollTimer)
         return;
-    const brokerPath = resolveBrokerPath();
-    if (!brokerPath) {
-        vscode.window.showErrorMessage('IntraCode: Could not find dist/api-server.js. Run `npm run build` in the broker directory first, or set intracode.brokerPath in settings.');
+    pollTimer = setInterval(syncStatus, 4000);
+}
+function stopPolling() {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = undefined;
+    }
+}
+// ---------------------------------------------------------------------------
+// Server lifecycle
+// ---------------------------------------------------------------------------
+async function startBrokerServer() {
+    const port = getPort();
+    // Already running externally (or from a previous extension activation)?
+    if (await checkIsRunning(port)) {
+        setStatus(true);
+        // Ensure panel is open
+        BrokerPanel.createOrShow(port);
         return;
     }
-    brokerProcess = (0, child_process_1.spawn)('node', [brokerPath, String(getPort())], {
+    // Already have a managed child process
+    if (brokerProcess) {
+        BrokerPanel.createOrShow(port);
+        return;
+    }
+    const brokerPath = resolveBrokerPath();
+    if (!brokerPath) {
+        vscode.window.showErrorMessage('IntraCode: Cannot find api-server.js. ' +
+            'Set intracode.brokerPath in settings to the absolute path of dist/api-server.js.');
+        BrokerPanel.createOrShow(port); // open panel anyway so user can see config hint
+        return;
+    }
+    brokerProcess = (0, child_process_1.spawn)('node', [brokerPath, String(port)], {
         stdio: ['ignore', 'pipe', 'pipe'],
     });
-    brokerProcess.stdout?.on('data', (d) => process.stdout.write(`[Broker] ${d}`));
-    brokerProcess.stderr?.on('data', (d) => process.stderr.write(`[Broker] ${d}`));
-    brokerProcess.on('exit', (code) => {
+    brokerProcess.stderr?.on('data', (d) => process.stderr.write(`[IntraCode] ${d}`));
+    brokerProcess.stdout?.on('data', (d) => process.stdout.write(`[IntraCode] ${d}`));
+    brokerProcess.on('exit', async (code) => {
         brokerProcess = null;
-        setStatus(false);
         if (code !== 0 && code !== null) {
-            vscode.window.showWarningMessage(`IntraCode Broker exited (code ${code}).`);
+            // Before showing an error, check if another IDE already owns the port.
+            // This is the normal multi-agent scenario (Cursor started it, Antigravity joins it).
+            const alreadyRunning = await checkIsRunning(port);
+            if (alreadyRunning) {
+                setStatus(true);
+                // Silently attached — no error shown
+            }
+            else {
+                setStatus(false);
+                vscode.window.showWarningMessage(`IntraCode Broker failed to start. Is port ${port} already in use by a non-broker process?`);
+            }
+        }
+        else {
+            setStatus(false);
         }
     });
-    setStatus(true);
-    vscode.window.showInformationMessage(`IntraCode Broker started on port ${getPort()}.`);
+    // Wait a moment, then confirm it really started (or was already running)
+    await new Promise((r) => setTimeout(r, 700));
+    const started = await checkIsRunning(port);
+    setStatus(started);
+    BrokerPanel.createOrShow(port);
 }
 function stopBrokerServer() {
-    if (!brokerProcess)
-        return;
-    brokerProcess.kill();
-    brokerProcess = null;
+    if (brokerProcess) {
+        brokerProcess.kill();
+        brokerProcess = null;
+    }
     setStatus(false);
-    vscode.window.showInformationMessage('IntraCode Broker stopped.');
 }
-// --------------------------------------------------------------------------
-// Webview Panel
-// --------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Webview panel
+// ---------------------------------------------------------------------------
 class BrokerPanel {
     static current;
     panel;
     disposables = [];
-    static createOrShow(extensionUri, port) {
+    static createOrShow(port) {
+        // We need extensionUri — store it at activation time
+        const uri = BrokerPanel._extensionUri;
+        if (!uri)
+            return;
         if (BrokerPanel.current) {
             BrokerPanel.current.panel.reveal(vscode.ViewColumn.One);
             return;
         }
-        const panel = vscode.window.createWebviewPanel('intracodeBroker', 'IntraCode Broker', vscode.ViewColumn.One, { enableScripts: true });
-        BrokerPanel.current = new BrokerPanel(panel, extensionUri, port);
+        const panel = vscode.window.createWebviewPanel('intracodeBroker', 'IntraCode Broker', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
+        BrokerPanel.current = new BrokerPanel(panel, uri, port);
     }
+    static _extensionUri;
     constructor(panel, extensionUri, port) {
         this.panel = panel;
         this.panel.webview.html = this.buildHtml(extensionUri, port);
@@ -143,20 +221,27 @@ class BrokerPanel {
         this.disposables = [];
     }
 }
-// --------------------------------------------------------------------------
-// Activate
-// --------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Activate / Deactivate
+// ---------------------------------------------------------------------------
 function activate(context) {
+    BrokerPanel._extensionUri = context.extensionUri;
+    // Status bar — always visible, click = start+open dashboard
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'intracode.openBroker';
-    statusBarItem.show();
     setStatus(false);
+    statusBarItem.show();
     context.subscriptions.push(statusBarItem);
-    context.subscriptions.push(vscode.commands.registerCommand('intracode.openBroker', () => BrokerPanel.createOrShow(context.extensionUri, getPort())), vscode.commands.registerCommand('intracode.startServer', startBrokerServer), vscode.commands.registerCommand('intracode.stopServer', stopBrokerServer));
+    context.subscriptions.push(vscode.commands.registerCommand('intracode.openBroker', startBrokerServer), vscode.commands.registerCommand('intracode.startServer', startBrokerServer), vscode.commands.registerCommand('intracode.stopServer', stopBrokerServer));
+    // Start polling to keep status badge in sync
+    startPolling();
+    context.subscriptions.push({ dispose: stopPolling });
+    // Auto-start
     if (vscode.workspace.getConfiguration('intracode').get('autoStart', true)) {
         startBrokerServer();
     }
 }
 function deactivate() {
+    stopPolling();
     stopBrokerServer();
 }

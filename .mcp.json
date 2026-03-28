@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "intracode-broker": {
+      "command": "node",
+      "args": ["/Users/kavinrajasekaran/Desktop/Projects/IntraCode/dist/index.js"]
+    }
+  }
+}

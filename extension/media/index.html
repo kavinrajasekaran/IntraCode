@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; connect-src http://127.0.0.1:API_PORT; style-src 'unsafe-inline'; script-src 'nonce-CSP_NONCE';">
+    content="default-src 'none'; connect-src http://127.0.0.1:API_PORT; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntraCode Broker</title>
   <style>
@@ -242,7 +242,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script nonce="CSP_NONCE">
+<script>
   const API = 'http://127.0.0.1:API_PORT/api';
   let claimTaskId = null;
   let updateTaskId = null;
