@@ -1,0 +1,47 @@
+{
+  "name": "intracode-broker",
+  "displayName": "IntraCode Multi-Agent Broker",
+  "description": "Dashboard and controller for the IntraCode Multi-Agent Context Broker",
+  "version": "0.1.0",
+  "publisher": "intracode",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "intracode.openBroker", "title": "Open Broker Dashboard", "category": "IntraCode" },
+      { "command": "intracode.startServer", "title": "Start Broker Server", "category": "IntraCode" },
+      { "command": "intracode.stopServer",  "title": "Stop Broker Server",  "category": "IntraCode" }
+    ],
+    "configuration": {
+      "title": "IntraCode Broker",
+      "properties": {
+        "intracode.brokerPort": {
+          "type": "number",
+          "default": 3737,
+          "description": "Port for the IntraCode Broker HTTP API"
+        },
+        "intracode.brokerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to api-server.js. Leave blank to auto-detect from workspace."
+        },
+        "intracode.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the broker when VS Code opens"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.3"
+  }
+}
