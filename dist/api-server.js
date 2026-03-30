@@ -1,5 +1,5 @@
 import http from 'http';
-import { getOrientation, createTask, claimTask, updateTask, logFailure, checkFailures, registerArtifact, listTasks, listFailures, listArtifacts, listWorkingMemory, } from './tools.js';
+import { getOrientation, createTask, claimTask, updateTask, logFailure, checkFailures, registerArtifact, storeMemory, searchMemories, startSession, endSession, listTasks, listFailures, listArtifacts, listWorkingMemory, listMemories, } from './tools.js';
 const PORT = parseInt(process.argv[2] ?? '3737', 10);
 function reply(res, data, status = 200) {
     const body = JSON.stringify(data);
@@ -70,8 +70,23 @@ const server = http.createServer(async (req, res) => {
         else if (url === '/api/artifacts/register' && req.method === 'POST') {
             reply(res, registerArtifact(await readBody(req)));
         }
-        else if (url === '/api/memory' && req.method === 'GET') {
+        else if (url === '/api/working-memory' && req.method === 'GET') {
             reply(res, listWorkingMemory());
+        }
+        else if (url === '/api/memories' && req.method === 'GET') {
+            reply(res, listMemories());
+        }
+        else if (url === '/api/memories/store' && req.method === 'POST') {
+            reply(res, storeMemory(await readBody(req)));
+        }
+        else if (url === '/api/memories/search' && req.method === 'POST') {
+            reply(res, searchMemories(await readBody(req)));
+        }
+        else if (url === '/api/sessions/start' && req.method === 'POST') {
+            reply(res, startSession(await readBody(req)));
+        }
+        else if (url === '/api/sessions/end' && req.method === 'POST') {
+            reply(res, endSession(await readBody(req)));
         }
         else {
             reply(res, { error: 'Not Found' }, 404);

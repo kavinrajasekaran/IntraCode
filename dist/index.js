@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
-import { getOrientation, claimTask, updateTask, logFailure, checkFailures, registerArtifact, } from './tools.js';
+import { getOrientation, claimTask, updateTask, logFailure, checkFailures, registerArtifact, storeMemory, getMemory, searchMemories, deleteMemory, startSession, endSession, } from './tools.js';
 // ---------------------------------------------------------------------------
 // Server definition
 // ---------------------------------------------------------------------------
@@ -94,6 +94,81 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 required: ['name', 'path', 'description', 'agent_name'],
             },
         },
+        {
+            name: 'store_memory',
+            description: 'Store a generic piece of knowledge, rule, or architectural decision across sessions. Auto-merges on duplicate keys.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    key: { type: 'string', description: 'A unique identifier for this memory (e.g. "auth-architecture").' },
+                    content: { type: 'string', description: 'The actual knowledge, rule, or decision to store.' },
+                    tags: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional tags for categorization (e.g. ["auth", "backend"]).',
+                    },
+                    agent_name: { type: 'string', description: 'The name of the agent storing the memory.' },
+                },
+                required: ['key', 'content', 'agent_name'],
+            },
+        },
+        {
+            name: 'get_memory',
+            description: 'Fetch exactly one memory by its unique key.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    key: { type: 'string', description: 'The unique key of the memory to fetch.' },
+                },
+                required: ['key'],
+            },
+        },
+        {
+            name: 'search_memories',
+            description: 'Full-text search across generic project memories (knowledge, decisions, rules). Returns max 10 matches.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Full-text search query across keys, content, and tags.' },
+                },
+                required: ['query'],
+            },
+        },
+        {
+            name: 'delete_memory',
+            description: 'Delete a specific generic memory by key.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    key: { type: 'string', description: 'The unique key of the memory to delete.' },
+                },
+                required: ['key'],
+            },
+        },
+        {
+            name: 'start_session',
+            description: 'Start a new coding/working session. Groups future actions together.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_name: { type: 'string', description: 'The name of the agent starting a session.' },
+                    goal: { type: 'string', description: 'The high-level goal of this working session.' },
+                },
+                required: ['agent_name', 'goal'],
+            },
+        },
+        {
+            name: 'end_session',
+            description: 'End your current active session. Doing this is required before ending a ticket.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_name: { type: 'string', description: 'The name of the agent ending their session.' },
+                    status: { type: 'string', enum: ['completed', 'failed'], description: 'The outcome of the session.' },
+                },
+                required: ['agent_name', 'status'],
+            },
+        },
     ],
 }));
 // ---------------------------------------------------------------------------
@@ -121,6 +196,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 break;
             case 'register_artifact':
                 result = registerArtifact(args);
+                break;
+            case 'store_memory':
+                result = storeMemory(args);
+                break;
+            case 'get_memory':
+                result = getMemory(args);
+                break;
+            case 'search_memories':
+                result = searchMemories(args);
+                break;
+            case 'delete_memory':
+                result = deleteMemory(args);
+                break;
+            case 'start_session':
+                result = startSession(args);
+                break;
+            case 'end_session':
+                result = endSession(args);
                 break;
             default:
                 throw new Error(`Unknown tool: ${name}`);

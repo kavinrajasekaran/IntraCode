@@ -105,10 +105,13 @@
     .item.fail { border-left-color: var(--c-failed); }
     .item.art  { border-left-color: var(--accent); }
     .item.mem  { border-left-color: var(--c-pending); }
+    .item.generic-mem { border-left-color: var(--c-progress); }
     .item-title { font-weight: 600; margin-bottom: 3px; }
     .item-sub   { color: var(--dim); font-size: 11px; margin-top: 2px; line-height: 1.4; }
     .item-path  { color: var(--dim); font-family: monospace; font-size: 10px; margin-top: 2px; }
     .item-meta  { color: var(--dim); font-size: 10px; margin-top: 4px; }
+    .tags-row   { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .tag        { padding: 2px 6px; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 4px; font-size: 9px; color: var(--text); }
 
     /* ── Modal ───────────────────────────────────────────── */
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65);
@@ -174,6 +177,7 @@
   <div class="tab-bar">
     <button class="tab active" onclick="showTab('failures')">Failures</button>
     <button class="tab" onclick="showTab('artifacts')">Artifacts</button>
+    <button class="tab" onclick="showTab('generic-memories')">Memories</button>
     <button class="tab" onclick="showTab('memory')">Working Memory</button>
   </div>
   <div id="tab-failures" class="tab-content active">
@@ -186,6 +190,14 @@
   </div>
   <div id="tab-artifacts" class="tab-content">
     <div id="artList"></div>
+  </div>
+  <div id="tab-generic-memories" class="tab-content">
+    <div class="search-row">
+      <input id="memQ" type="text" placeholder="Search project knowledge, rules, decisions..." onkeydown="if(event.key==='Enter')searchMemories()">
+      <button class="btn btn-ghost btn-sm" onclick="searchMemories()">Search</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadMemories()">All</button>
+    </div>
+    <div id="genericMemList"></div>
   </div>
   <div id="tab-memory" class="tab-content">
     <div id="memList"></div>
@@ -320,13 +332,15 @@
   // ── Bottom tabs ────────────────────────────────────────
   function showTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
-      const names = ['failures','artifacts','memory'];
+      const names = ['failures','artifacts','generic-memories','memory'];
       t.classList.toggle('active', names[i] === name);
     });
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'artifacts') loadArtifacts();
     if (name === 'memory')    loadMemory();
+    if (name === 'failures')  loadFail();
+    if (name === 'generic-memories') loadMemories();
   }
 
   function renderFail(items) {
@@ -367,7 +381,7 @@
   }
 
   async function loadMemory() {
-    const d = await get('/memory');
+    const d = await get('/working-memory');
     const el = document.getElementById('memList');
     const items = d.events ?? [];
     if (!items.length) { el.innerHTML = '<div class="empty">No events yet.</div>'; return; }
@@ -376,6 +390,33 @@
         <div class="item-title">${esc(m.event_description)}</div>
         <div class="item-meta">🤖 ${esc(m.agent_name)} · ${fmt(m.created_at)}</div>
       </div>`).join('');
+  }
+
+  function renderMemories(items) {
+    const el = document.getElementById('genericMemList');
+    if (!items.length) { el.innerHTML = '<div class="empty">No memories stored.</div>'; return; }
+    el.innerHTML = items.map(m => {
+      const tags = m.tags ? JSON.parse(m.tags) : [];
+      return `
+      <div class="item generic-mem">
+        <div class="item-title">${esc(m.key)}</div>
+        <div class="item-sub" style="white-space: pre-wrap;">${esc(m.content)}</div>
+        ${tags.length ? `<div class="tags-row">${tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+        <div class="item-meta">🤖 ${esc(m.agent_name)} · updated ${fmt(m.updated_at)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadMemories() {
+    const d = await get('/memories');
+    renderMemories(d.memories ?? []);
+  }
+
+  async function searchMemories() {
+    const q = document.getElementById('memQ').value.trim();
+    if (!q) { loadMemories(); return; }
+    const d = await post('/memories/search', { query: q });
+    renderMemories(d.results ?? []);
   }
 
   // ── Modals ─────────────────────────────────────────────

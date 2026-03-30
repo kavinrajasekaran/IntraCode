@@ -70,5 +70,44 @@ db.exec(`
     event_description TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_name TEXT NOT NULL,
+    status TEXT CHECK(status IN ('active', 'completed', 'failed')) DEFAULT 'active',
+    goal TEXT,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME
+  );
+
+  CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT UNIQUE NOT NULL,
+    content TEXT NOT NULL,
+    tags TEXT,
+    agent_name TEXT,
+    priority INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE VIRTUAL TABLE IF NOT EXISTS memories_search USING fts5(
+    key,
+    content,
+    tags,
+    content='memories',
+    content_rowid='id'
+  );
+
+  CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_search(rowid, key, content, tags) VALUES (new.id, new.key, new.content, new.tags);
+  END;
+  CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_search(memories_search, rowid, key, content, tags) VALUES ('delete', old.id, old.key, old.content, old.tags);
+  END;
+  CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+    INSERT INTO memories_search(memories_search, rowid, key, content, tags) VALUES ('delete', old.id, old.key, old.content, old.tags);
+    INSERT INTO memories_search(rowid, key, content, tags) VALUES (new.id, new.key, new.content, new.tags);
+  END;
 `);
 export default db;

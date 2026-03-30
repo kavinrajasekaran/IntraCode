@@ -8,6 +8,12 @@ import {
   LogFailureSchema,
   CheckFailuresSchema,
   RegisterArtifactSchema,
+  StoreMemorySchema,
+  GetMemorySchema,
+  SearchMemoriesSchema,
+  DeleteMemorySchema,
+  StartSessionSchema,
+  EndSessionSchema,
 } from './schema.js';
 
 // ---------------------------------------------------------------------------
@@ -235,4 +241,133 @@ export function registerArtifact(rawInput: unknown): object {
 
     return { success: true, artifact_id: info.lastInsertRowid };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: store_memory
+// ---------------------------------------------------------------------------
+
+export function storeMemory(rawInput: unknown): object {
+  const { key, content, tags, agent_name } = StoreMemorySchema.parse(rawInput);
+  
+  return safeRun(() => {
+    const tagsString = tags ? JSON.stringify(tags) : null;
+    const info = db
+      .prepare(
+        `INSERT INTO memories (key, content, tags, agent_name)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           content = excluded.content,
+           tags = excluded.tags,
+           agent_name = excluded.agent_name,
+           updated_at = CURRENT_TIMESTAMP`
+      )
+      .run(key, content, tagsString, agent_name);
+
+    insertEvent(agent_name, `Stored memory: ${key}`);
+    return { success: true, memory_id: info.lastInsertRowid };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: get_memory
+// ---------------------------------------------------------------------------
+
+export function getMemory(rawInput: unknown): object {
+  const { key } = GetMemorySchema.parse(rawInput);
+  
+  return safeRun(() => {
+    const memory = db.prepare('SELECT * FROM memories WHERE key = ?').get(key);
+    if (!memory) {
+      throw new Error(`Memory with key '${key}' not found.`);
+    }
+    return { success: true, memory };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: search_memories
+// ---------------------------------------------------------------------------
+
+export function searchMemories(rawInput: unknown): object {
+  const { query } = SearchMemoriesSchema.parse(rawInput);
+
+  return safeRun(() => {
+    const rows = db
+      .prepare(
+        `SELECT m.id, m.key, m.content, m.tags, m.agent_name, m.updated_at
+         FROM memories_search ms
+         JOIN memories m ON m.id = ms.rowid
+         WHERE memories_search MATCH ?
+         ORDER BY bm25(memories_search)
+         LIMIT 10`
+      )
+      .all(query);
+
+    return { results: rows };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: delete_memory
+// ---------------------------------------------------------------------------
+
+export function deleteMemory(rawInput: unknown): object {
+  const { key } = DeleteMemorySchema.parse(rawInput);
+
+  return safeRun(() => {
+    const info = db.prepare('DELETE FROM memories WHERE key = ?').run(key);
+    if (info.changes === 0) {
+      throw new Error(`Memory with key '${key}' not found.`);
+    }
+    return { success: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: start_session
+// ---------------------------------------------------------------------------
+
+export function startSession(rawInput: unknown): object {
+  const { agent_name, goal } = StartSessionSchema.parse(rawInput);
+
+  return safeRun(() => {
+    const info = db
+      .prepare('INSERT INTO sessions (agent_name, goal) VALUES (?, ?)')
+      .run(agent_name, goal);
+
+    insertEvent(agent_name, `Started session: ${goal}`);
+    return { success: true, session_id: info.lastInsertRowid };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: end_session
+// ---------------------------------------------------------------------------
+
+export function endSession(rawInput: unknown): object {
+  const { agent_name, status } = EndSessionSchema.parse(rawInput);
+
+  return safeRun(() => {
+    // End all active sessions for this agent
+    const info = db
+      .prepare(
+        `UPDATE sessions SET status = ?, ended_at = CURRENT_TIMESTAMP
+         WHERE agent_name = ? AND status = 'active'`
+      )
+      .run(status, agent_name);
+
+    insertEvent(agent_name, `Ended active session(s) with status: ${status}`);
+    return { success: true, updated_sessions: info.changes };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Additional list helper for HTTP API
+// ---------------------------------------------------------------------------
+
+export function listMemories(): object {
+  return safeRun(() => ({
+    memories: db.prepare('SELECT * FROM memories ORDER BY updated_at DESC').all(),
+  }));
 }

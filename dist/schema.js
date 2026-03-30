@@ -29,3 +29,26 @@ export const RegisterArtifactSchema = z.object({
     description: z.string().min(1).describe('A description of what this artifact is and its purpose.'),
     agent_name: z.string().min(1).describe('The name of the agent registering the artifact.'),
 });
+export const StoreMemorySchema = z.object({
+    key: z.string().min(1).describe('A unique identifier for this memory (e.g. "auth-architecture").'),
+    content: z.string().min(1).describe('The actual knowledge, rule, or decision to store.'),
+    tags: z.array(z.string()).optional().describe('Optional tags for categorization (e.g. ["auth", "backend"]).'),
+    agent_name: z.string().min(1).describe('The name of the agent storing the memory.'),
+});
+export const GetMemorySchema = z.object({
+    key: z.string().min(1).describe('The unique key of the memory to fetch.'),
+});
+export const SearchMemoriesSchema = z.object({
+    query: z.string().min(1).describe('Full-text search query across keys, content, and tags.'),
+});
+export const DeleteMemorySchema = z.object({
+    key: z.string().min(1).describe('The unique key of the memory to delete.'),
+});
+export const StartSessionSchema = z.object({
+    agent_name: z.string().min(1).describe('The name of the agent starting a session.'),
+    goal: z.string().min(1).describe('The high-level goal of this working session.'),
+});
+export const EndSessionSchema = z.object({
+    agent_name: z.string().min(1).describe('The name of the agent ending their session.'),
+    status: z.enum(['completed', 'failed']).describe('The outcome of the session.'),
+});
