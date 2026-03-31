@@ -3,6 +3,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   getOrientation,
@@ -17,6 +19,16 @@ import {
   deleteMemory,
   startSession,
   endSession,
+  logDecision,
+  logProgress,
+  addTask,
+  listTasks,
+  listFailures,
+  listArtifacts,
+  listWorkingMemory,
+  listMemories,
+  leaveMemo,
+  readMemos,
 } from './tools.js';
 
 // ---------------------------------------------------------------------------
@@ -25,8 +37,45 @@ import {
 
 const server = new Server(
   { name: 'multi-agent-broker', version: '1.0.0' },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {} } }
 );
+
+// ---------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: [
+    {
+      uri: 'intercode://context',
+      name: 'Project Context',
+      mimeType: 'application/json',
+      description: 'The global context, including tasks, active agents, and project rules.',
+    },
+    {
+      uri: 'intercode://working-memory',
+      name: 'Working Memory',
+      mimeType: 'application/json',
+      description: 'The most recent actions taken by agents across the project.',
+    },
+  ],
+}));
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const uri = request.params.uri;
+  if (uri === 'intercode://context') {
+    const data = getOrientation();
+    return {
+      contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data, null, 2) }],
+    };
+  } else if (uri === 'intercode://working-memory') {
+    const data = listWorkingMemory();
+    return {
+      contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data, null, 2) }],
+    };
+  }
+  throw new Error(`Unknown resource: ${uri}`);
+});
 
 // ---------------------------------------------------------------------------
 // Tool listing
@@ -198,6 +247,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['agent_name', 'status'],
       },
     },
+    {
+      name: 'log_decision',
+      description: 'Record an architectural or design decision into the shared memory with a "decision" tag. Use whenever you make a non-obvious technical choice.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key:       { type: 'string', description: 'Short unique slug, e.g. "use-postgres".' },
+          decision:  { type: 'string', description: 'What was decided.' },
+          rationale: { type: 'string', description: 'Why this decision was made.' },
+          agent_name: { type: 'string', description: 'Identifier for this agent.' },
+        },
+        required: ['key', 'decision', 'agent_name'],
+      },
+    },
+    {
+      name: 'log_progress',
+      description: 'Log a short summary of what you just completed. Call this after finishing any meaningful step — writing a function, fixing a bug, completing a refactor, etc.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_name: { type: 'string', description: 'Identifier for this agent.' },
+          summary: { type: 'string', description: 'What was just completed.' },
+        },
+        required: ['agent_name', 'summary'],
+      },
+    },
+    {
+      name: 'add_task',
+      description: 'Add a new task to the shared Kanban board. Use when you discover work that needs to be done but is out of scope for your current task.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title:      { type: 'string', description: 'Title of the task.' },
+          reasoning:  { type: 'string', description: 'Why this task is needed.' },
+          agent_name: { type: 'string', description: 'Identifier for this agent.' },
+        },
+        required: ['title', 'agent_name'],
+      },
+    },
+    {
+      name: 'leave_memo',
+      description: 'Leave a memo for yourself or the next agent picking up this task. Useful for communicating blockers, logging a warning, or leaving a breadcrumb tail of context.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_name: { type: 'string', description: 'Identifier for this agent.' },
+          message:    { type: 'string', description: 'The memo content.' },
+          urgency:    { type: 'string', enum: ['info', 'warning', 'blocker'], description: 'Urgency level for this memo.' },
+        },
+        required: ['agent_name', 'message', 'urgency'],
+      },
+    },
+    {
+      name: 'read_memos',
+      description: 'Read the memos left by other agents across sessions.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          urgency_filter: { type: 'string', enum: ['info', 'warning', 'blocker'], description: 'Filter memos by urgency.' },
+        },
+      },
+    },
   ],
 }));
 
@@ -247,6 +358,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'end_session':
         result = endSession(args);
+        break;
+      case 'log_decision':
+        result = logDecision(args);
+        break;
+      case 'log_progress':
+        result = logProgress(args);
+        break;
+      case 'add_task':
+        result = addTask(args);
+        break;
+      case 'leave_memo':
+        result = leaveMemo(args);
+        break;
+      case 'read_memos':
+        result = readMemos(args);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

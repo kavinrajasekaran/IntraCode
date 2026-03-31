@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; connect-src http://127.0.0.1:API_PORT; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IntraCode Broker</title>
+  <title>InterCode Broker</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -137,12 +137,12 @@
 <!-- Header -->
 <header>
   <div style="display:flex;align-items:center;gap:12px">
-    <span class="logo">⛓ IntraCode Broker</span>
+    <span class="logo">InterCode Broker</span>
     <span id="statusBadge" class="badge off"><span class="dot"></span><span id="statusText">Connecting…</span></span>
   </div>
   <div class="actions">
     <button class="btn btn-primary btn-sm" onclick="openModal('newTask')">+ New Task</button>
-    <button class="btn btn-ghost btn-sm" onclick="refresh()">↻ Refresh</button>
+    <button class="btn btn-ghost btn-sm" onclick="refresh()">Refresh</button>
   </div>
 </header>
 
@@ -284,17 +284,44 @@
   }
 
   // ── Status ─────────────────────────────────────────────
+  function setOnline(online) {
+    const b = document.getElementById('statusBadge');
+    const t = document.getElementById('statusText');
+    if (online) {
+      b.className = 'badge on';
+      t.textContent = 'Running';
+    } else {
+      b.className = 'badge off';
+      t.textContent = 'Offline';
+    }
+  }
+
   async function checkHealth() {
     try {
       await get('/health');
-      const b = document.getElementById('statusBadge');
-      b.className = 'badge on';
-      document.getElementById('statusText').textContent = 'Running';
+      setOnline(true);
+      return true;
     } catch {
-      const b = document.getElementById('statusBadge');
-      b.className = 'badge off';
-      document.getElementById('statusText').textContent = 'Offline';
+      setOnline(false);
+      return false;
     }
+  }
+
+  // On panel open, retry until the server responds (max 15 seconds).
+  async function waitForServer() {
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const ok = await checkHealth();
+      if (ok) {
+        // Server ready — do the full initial load.
+        const d = await get('/tasks').catch(() => ({}));
+        renderKanban(d.tasks ?? []);
+        loadFail();
+        return;
+      }
+      await new Promise(r => setTimeout(r, 400));
+    }
+    // Timed out — leave badge as Offline.
   }
 
   // ── Kanban ─────────────────────────────────────────────
@@ -315,7 +342,7 @@
         <div class="card">
           <div class="card-id">#${t.id}</div>
           <div class="card-title">${esc(t.title)}</div>
-          ${t.assigned_agent ? `<div class="card-agent">🤖 ${esc(t.assigned_agent)}</div>` : ''}
+          ${t.assigned_agent ? `<div class="card-agent">${esc(t.assigned_agent)}</div>` : ''}
           <div class="card-date">${fmt(t.created_at)}</div>
           <div class="card-btns">
             ${status === 'pending' ? `<button class="btn btn-sm b-claim" onclick="openClaim(${t.id})">Claim</button>` : ''}
@@ -350,7 +377,7 @@
       <div class="item fail">
         <div class="item-title">${esc(f.approach)}</div>
         <div class="item-sub">${esc(f.reason)}</div>
-        <div class="item-meta">🤖 ${esc(f.agent_name)} · ${fmt(f.created_at)}</div>
+        <div class="item-meta">${esc(f.agent_name)} · ${fmt(f.created_at)}</div>
       </div>`).join('');
   }
 
@@ -376,7 +403,7 @@
         <div class="item-title">${esc(a.name)}</div>
         <div class="item-path">${esc(a.path)}</div>
         <div class="item-sub">${esc(a.description)}</div>
-        <div class="item-meta">🤖 ${esc(a.agent_name)} · ${fmt(a.created_at)}</div>
+        <div class="item-meta">${esc(a.agent_name)} · ${fmt(a.created_at)}</div>
       </div>`).join('');
   }
 
@@ -388,7 +415,7 @@
     el.innerHTML = items.map(m => `
       <div class="item mem">
         <div class="item-title">${esc(m.event_description)}</div>
-        <div class="item-meta">🤖 ${esc(m.agent_name)} · ${fmt(m.created_at)}</div>
+        <div class="item-meta">${esc(m.agent_name)} · ${fmt(m.created_at)}</div>
       </div>`).join('');
   }
 
@@ -402,7 +429,7 @@
         <div class="item-title">${esc(m.key)}</div>
         <div class="item-sub" style="white-space: pre-wrap;">${esc(m.content)}</div>
         ${tags.length ? `<div class="tags-row">${tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
-        <div class="item-meta">🤖 ${esc(m.agent_name)} · updated ${fmt(m.updated_at)}</div>
+        <div class="item-meta">${esc(m.agent_name)} · updated ${fmt(m.updated_at)}</div>
       </div>`;
     }).join('');
   }
@@ -485,9 +512,14 @@
     loadFail();
   }
 
-  // Boot
-  refresh();
-  setInterval(refresh, 8000);
+  // Boot — wait until server is up, then start polling
+  waitForServer();
+  setInterval(async () => {
+    await checkHealth();
+    const d = await get('/tasks').catch(() => ({}));
+    renderKanban(d.tasks ?? []);
+    loadFail();
+  }, 8000);
 </script>
 </body>
 </html>

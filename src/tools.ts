@@ -14,6 +14,11 @@ import {
   DeleteMemorySchema,
   StartSessionSchema,
   EndSessionSchema,
+  LogDecisionSchema,
+  LogProgressSchema,
+  AddTaskSchema,
+  LeaveMemoSchema,
+  ReadMemosSchema,
 } from './schema.js';
 
 // ---------------------------------------------------------------------------
@@ -370,4 +375,112 @@ export function listMemories(): object {
   return safeRun(() => ({
     memories: db.prepare('SELECT * FROM memories ORDER BY updated_at DESC').all(),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Tool: log_decision
+// ---------------------------------------------------------------------------
+
+export function logDecision(rawInput: unknown): object {
+  const { key, decision, rationale, agent_name } = LogDecisionSchema.parse(rawInput);
+  const content = rationale ? `${decision}\n\nRationale: ${rationale}` : decision;
+  return safeRun(() => {
+    db.prepare(`
+      INSERT INTO memories (key, content, tags, agent_name)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        content    = excluded.content,
+        tags       = excluded.tags,
+        agent_name = excluded.agent_name,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(key, content, JSON.stringify(['decision']), agent_name);
+    insertEvent(agent_name, `Logged decision: ${key}`);
+    return { success: true, key };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: log_progress
+// ---------------------------------------------------------------------------
+
+export function logProgress(rawInput: unknown): object {
+  const { agent_name, summary } = LogProgressSchema.parse(rawInput);
+  return safeRun(() => {
+    insertEvent(agent_name, summary);
+    return { success: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: add_task
+// ---------------------------------------------------------------------------
+
+export function addTask(rawInput: unknown): object {
+  const { title, reasoning, agent_name } = AddTaskSchema.parse(rawInput);
+  return safeRun(() => {
+    const info = db
+      .prepare('INSERT INTO tasks (title, reasoning) VALUES (?, ?)')
+      .run(title, reasoning ?? null);
+    insertEvent(agent_name, `Created task: "${title}"`);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
+    return { success: true, task };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: leave_memo
+// ---------------------------------------------------------------------------
+
+export function leaveMemo(rawInput: unknown): object {
+  const { agent_name, message, urgency } = LeaveMemoSchema.parse(rawInput);
+  const key = `agent/memo/${Date.now().toString(36)}`;
+  return safeRun(() => {
+    db.prepare(`
+      INSERT INTO memories (key, content, tags, agent_name)
+      VALUES (?, ?, ?, ?)
+    `).run(key, message, JSON.stringify(['memo', urgency]), agent_name);
+    insertEvent(agent_name, `Left ${urgency} memo: "${message.slice(0, 50)}..."`);
+    return { success: true, key };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: read_memos
+// ---------------------------------------------------------------------------
+
+export function readMemos(rawInput: unknown): object {
+  const { urgency_filter } = ReadMemosSchema.parse(rawInput);
+  return safeRun(() => {
+    const mems = db.prepare(`SELECT * FROM memories WHERE tags LIKE '%"memo"%' ORDER BY updated_at DESC`).all();
+    
+    // Parse tags and filter
+    const parsed = mems.map((m: any) => ({
+      ...m,
+      parsedTags: JSON.parse(m.tags ?? '[]') as string[]
+    }));
+
+    let results = parsed;
+    if (urgency_filter) {
+      results = parsed.filter(m => m.parsedTags.includes(urgency_filter));
+    }
+
+    const output = results.map(m => {
+      const urgency = m.parsedTags.find((t: string) => ['blocker', 'warning', 'info'].includes(t)) || 'info';
+      return {
+        key: m.key,
+        author: m.agent_name,
+        urgency,
+        message: m.content,
+        created: m.updated_at
+      };
+    });
+
+    const blockers = output.filter(m => m.urgency === 'blocker').length;
+    return { 
+      totalMemos: output.length,
+      blockers,
+      memos: output,
+      hint: blockers > 0 ? `${blockers} BLOCKER(s) require attention.` : 'Review memos and proceed.'
+    };
+  });
 }

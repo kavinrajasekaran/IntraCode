@@ -1,7 +1,10 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-// Instantiate the database
-const dbPath = path.resolve(process.cwd(), '.multi-agent-broker.db');
+import { fileURLToPath } from 'url';
+// Resolve the project root relative to this compiled file (dist/db.js → project root)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbPath = path.resolve(__dirname, '..', '.multi-agent-broker.db');
 const db = new Database(dbPath);
 // Initialization: Enable WAL mode and optimal synchronous setting
 db.exec('PRAGMA journal_mode = WAL;');

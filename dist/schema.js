@@ -52,3 +52,26 @@ export const EndSessionSchema = z.object({
     agent_name: z.string().min(1).describe('The name of the agent ending their session.'),
     status: z.enum(['completed', 'failed']).describe('The outcome of the session.'),
 });
+export const LogDecisionSchema = z.object({
+    key: z.string().min(1).describe('Short unique slug for this decision, e.g. "use-postgres".'),
+    decision: z.string().min(1).describe('What was decided.'),
+    rationale: z.string().optional().describe('Why this decision was made.'),
+    agent_name: z.string().min(1).describe('The agent making the decision.'),
+});
+export const LogProgressSchema = z.object({
+    agent_name: z.string().min(1).describe('The name of the agent logging progress.'),
+    summary: z.string().min(1).describe('A short description of what was just completed or accomplished.'),
+});
+export const AddTaskSchema = z.object({
+    title: z.string().min(1).describe('Title of the new task to add to the board.'),
+    reasoning: z.string().optional().describe('Why this task is needed.'),
+    agent_name: z.string().min(1).describe('The agent creating the task.'),
+});
+export const LeaveMemoSchema = z.object({
+    agent_name: z.string().min(1).describe('The agent leaving the memo.'),
+    message: z.string().min(1).describe('The memo content.'),
+    urgency: z.enum(['info', 'warning', 'blocker']).describe('Urgency level for this memo.'),
+});
+export const ReadMemosSchema = z.object({
+    urgency_filter: z.enum(['info', 'warning', 'blocker']).optional().describe('Filter memos by urgency.'),
+});
