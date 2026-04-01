@@ -20,11 +20,11 @@ function getNonce(): string {
 }
 
 function getPort(): number {
-  return vscode.workspace.getConfiguration('intercode').get<number>('brokerPort', 3737);
+  return vscode.workspace.getConfiguration('interagent').get<number>('brokerPort', 3737);
 }
 
 function resolveBrokerPath(): string | null {
-  const configured = vscode.workspace.getConfiguration('intercode').get<string>('brokerPath', '');
+  const configured = vscode.workspace.getConfiguration('interagent').get<string>('brokerPath', '');
   if (configured && fs.existsSync(configured)) return configured;
 
   const folders = vscode.workspace.workspaceFolders;
@@ -35,7 +35,7 @@ function resolveBrokerPath(): string | null {
     }
   }
 
-  // Relative to extension installation: extension/out/extension.js → InterCode/dist/api-server.js
+  // Relative to extension installation: extension/out/extension.js → InterAgent/dist/api-server.js
   const fromExtension = path.join(__dirname, '..', '..', 'dist', 'api-server.js');
   if (fs.existsSync(fromExtension)) return fromExtension;
 
@@ -48,13 +48,13 @@ function resolveBrokerPath(): string | null {
 
 function setStatus(online: boolean) {
   if (online) {
-    statusBarItem.text = '$(circle-filled) InterCode';
-    statusBarItem.tooltip = `InterCode Broker running on port ${getPort()} — click to open dashboard`;
+    statusBarItem.text = '$(circle-filled) InterAgent';
+    statusBarItem.tooltip = `InterAgent Broker running on port ${getPort()} — click to open dashboard`;
     statusBarItem.backgroundColor = undefined;
     statusBarItem.color = new vscode.ThemeColor('statusBarItem.prominentForeground');
   } else {
-    statusBarItem.text = '$(circle-outline) InterCode';
-    statusBarItem.tooltip = 'InterCode Broker offline — click to open dashboard';
+    statusBarItem.text = '$(circle-outline) InterAgent';
+    statusBarItem.tooltip = 'InterAgent Broker offline — click to open dashboard';
     statusBarItem.color = undefined;
     statusBarItem.backgroundColor = undefined;
   }
@@ -123,20 +123,24 @@ async function startBrokerServer(showPanel = true) {
   if (!brokerPath) {
     if (showPanel) {
       vscode.window.showErrorMessage(
-        'InterCode: Cannot find api-server.js. ' +
-        'Set intercode.brokerPath in settings to the absolute path of dist/api-server.js.'
+        'InterAgent: Cannot find api-server.js. ' +
+        'Set interagent.brokerPath in settings to the absolute path of dist/api-server.js.'
       );
       BrokerPanel.createOrShow(port); // open panel anyway so user can see config hint
     }
     return;
   }
 
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+
   brokerProcess = spawn('node', [brokerPath, String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: workspaceRoot,
+    env: { ...process.env, INTERAGENT_WORKSPACE_ROOT: workspaceRoot },
   });
 
-  brokerProcess.stderr?.on('data', (d) => process.stderr.write(`[InterCode] ${d}`));
-  brokerProcess.stdout?.on('data', (d) => process.stdout.write(`[InterCode] ${d}`));
+  brokerProcess.stderr?.on('data', (d) => process.stderr.write(`[InterAgent] ${d}`));
+  brokerProcess.stdout?.on('data', (d) => process.stdout.write(`[InterAgent] ${d}`));
 
   brokerProcess.on('exit', async (code) => {
     brokerProcess = null;
@@ -151,7 +155,7 @@ async function startBrokerServer(showPanel = true) {
         // Only surface the warning when the user explicitly tried to start the server.
         if (showPanel) {
           vscode.window.showWarningMessage(
-            `InterCode Broker failed to start. Is port ${port} already in use by a non-broker process?`
+            `InterAgent Broker failed to start. Is port ${port} already in use by a non-broker process?`
           );
         }
       }
@@ -195,7 +199,7 @@ class BrokerPanel {
       return;
     }
     const panel = vscode.window.createWebviewPanel(
-      'intercodeBroker', 'InterCode Broker',
+      'interagentBroker', 'InterAgent Broker',
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -236,15 +240,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Status bar — always visible, click = start+open dashboard
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBarItem.command = 'intercode.openBroker';
+  statusBarItem.command = 'interagent.openBroker';
   setStatus(false);
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('intercode.openBroker', () => startBrokerServer(true)),
-    vscode.commands.registerCommand('intercode.startServer', () => startBrokerServer(false)),
-    vscode.commands.registerCommand('intercode.stopServer', stopBrokerServer),
+    vscode.commands.registerCommand('interagent.openBroker', () => startBrokerServer(true)),
+    vscode.commands.registerCommand('interagent.startServer', () => startBrokerServer(false)),
+    vscode.commands.registerCommand('interagent.stopServer', stopBrokerServer),
   );
 
   // Start polling to keep status badge in sync
@@ -252,7 +256,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push({ dispose: stopPolling });
 
   // Auto-start silently
-  if (vscode.workspace.getConfiguration('intercode').get<boolean>('autoStart', true)) {
+  if (vscode.workspace.getConfiguration('interagent').get<boolean>('autoStart', true)) {
     startBrokerServer(false);
   }
 }

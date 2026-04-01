@@ -1,33 +1,33 @@
 {
-  "name": "intercode-broker",
-  "displayName": "InterCode Multi-Agent Broker",
-  "description": "Dashboard and controller for the InterCode Multi-Agent Context Broker",
+  "name": "interagent-broker",
+  "displayName": "InterAgent Multi-Agent Broker",
+  "description": "Dashboard and controller for the InterAgent Multi-Agent Context Broker",
   "version": "0.3.2",
-  "publisher": "intercode",
+  "publisher": "interagent",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "intercode.openBroker", "title": "Open Broker Dashboard", "category": "InterCode" },
-      { "command": "intercode.startServer", "title": "Start Broker Server", "category": "InterCode" },
-      { "command": "intercode.stopServer",  "title": "Stop Broker Server",  "category": "InterCode" }
+      { "command": "interagent.openBroker", "title": "Open Broker Dashboard", "category": "InterAgent" },
+      { "command": "interagent.startServer", "title": "Start Broker Server", "category": "InterAgent" },
+      { "command": "interagent.stopServer",  "title": "Stop Broker Server",  "category": "InterAgent" }
     ],
     "configuration": {
-      "title": "InterCode Broker",
+      "title": "InterAgent Broker",
       "properties": {
-        "intercode.brokerPort": {
+        "interagent.brokerPort": {
           "type": "number",
           "default": 3737,
-          "description": "Port for the InterCode Broker HTTP API"
+          "description": "Port for the InterAgent Broker HTTP API"
         },
-        "intercode.brokerPath": {
+        "interagent.brokerPath": {
           "type": "string",
           "default": "",
           "description": "Absolute path to api-server.js. Leave blank to auto-detect from workspace."
         },
-        "intercode.autoStart": {
+        "interagent.autoStart": {
           "type": "boolean",
           "default": true,
           "description": "Automatically start the broker when VS Code opens"

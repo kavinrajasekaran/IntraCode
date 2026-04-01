@@ -1,5 +1,5 @@
 import http from 'http';
-import { getOrientation, createTask, claimTask, updateTask, logFailure, checkFailures, registerArtifact, storeMemory, searchMemories, startSession, endSession, listTasks, listFailures, listArtifacts, listWorkingMemory, listMemories, } from './tools.js';
+import { getOrientation, createTask, claimTask, updateTask, logFailure, checkFailures, registerArtifact, storeMemory, searchMemories, startSession, endSession, listTasks, listFailures, listArtifacts, listWorkingMemory, listMemories, readMemos, leaveMemo } from './tools.js';
 const PORT = parseInt(process.argv[2] ?? '3737', 10);
 function reply(res, data, status = 200) {
     const body = JSON.stringify(data);
@@ -88,6 +88,12 @@ const server = http.createServer(async (req, res) => {
         else if (url === '/api/sessions/end' && req.method === 'POST') {
             reply(res, endSession(await readBody(req)));
         }
+        else if (url === '/api/memos' && req.method === 'GET') {
+            reply(res, readMemos({}));
+        }
+        else if (url === '/api/memos/leave' && req.method === 'POST') {
+            reply(res, leaveMemo(await readBody(req)));
+        }
         else {
             reply(res, { error: 'Not Found' }, 404);
         }
@@ -98,7 +104,7 @@ const server = http.createServer(async (req, res) => {
     }
 });
 server.listen(PORT, '127.0.0.1', () => {
-    process.stdout.write(`[InterCode Broker] HTTP API listening on http://127.0.0.1:${PORT}\n`);
+    process.stdout.write(`[InterAgent Broker] HTTP API listening on http://127.0.0.1:${PORT}\n`);
 });
 process.on('SIGINT', () => { server.close(); process.exit(0); });
 process.on('SIGTERM', () => { server.close(); process.exit(0); });

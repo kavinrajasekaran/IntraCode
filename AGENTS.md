@@ -1,6 +1,6 @@
-# InterCode Broker — Agent Protocol
+# InterAgent Broker — Agent Protocol
 
-This project uses the **InterCode Multi-Agent Broker** to coordinate work across multiple AI agents and IDE sessions. Every agent working in this codebase MUST follow the rules below.
+This project uses the **InterAgent Multi-Agent Broker** to coordinate work across multiple AI agents and IDE sessions. Every agent working in this codebase MUST follow the rules below.
 
 ---
 

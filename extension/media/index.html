@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; connect-src http://127.0.0.1:API_PORT; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>InterCode Broker</title>
+  <title>InterAgent Broker</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -137,7 +137,7 @@
 <!-- Header -->
 <header>
   <div style="display:flex;align-items:center;gap:12px">
-    <span class="logo">InterCode Broker</span>
+    <span class="logo">InterAgent Broker</span>
     <span id="statusBadge" class="badge off"><span class="dot"></span><span id="statusText">Connecting…</span></span>
   </div>
   <div class="actions">
@@ -175,12 +175,16 @@
 <!-- Bottom Tabs -->
 <div class="bottom">
   <div class="tab-bar">
-    <button class="tab active" onclick="showTab('failures')">Failures</button>
+    <button class="tab active" onclick="showTab('memos')">Memos</button>
+    <button class="tab" onclick="showTab('failures')">Failures</button>
     <button class="tab" onclick="showTab('artifacts')">Artifacts</button>
     <button class="tab" onclick="showTab('generic-memories')">Memories</button>
     <button class="tab" onclick="showTab('memory')">Working Memory</button>
   </div>
-  <div id="tab-failures" class="tab-content active">
+  <div id="tab-memos" class="tab-content active">
+    <div id="memoList"></div>
+  </div>
+  <div id="tab-failures" class="tab-content">
     <div class="search-row">
       <input id="failQ" type="text" placeholder="Full-text search past failures…" onkeydown="if(event.key==='Enter')searchFail()">
       <button class="btn btn-ghost btn-sm" onclick="searchFail()">Search</button>
@@ -316,7 +320,9 @@
         // Server ready — do the full initial load.
         const d = await get('/tasks').catch(() => ({}));
         renderKanban(d.tasks ?? []);
-        loadFail();
+        const currentTab = document.querySelector('.tab.active').textContent.toLowerCase();
+        if (currentTab.includes('memos')) loadMemos();
+        else if (currentTab.includes('fail')) loadFail();
         return;
       }
       await new Promise(r => setTimeout(r, 400));
@@ -359,15 +365,31 @@
   // ── Bottom tabs ────────────────────────────────────────
   function showTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
-      const names = ['failures','artifacts','generic-memories','memory'];
+      const names = ['memos', 'failures','artifacts','generic-memories','memory'];
       t.classList.toggle('active', names[i] === name);
     });
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'memos')     loadMemos();
     if (name === 'artifacts') loadArtifacts();
     if (name === 'memory')    loadMemory();
     if (name === 'failures')  loadFail();
     if (name === 'generic-memories') loadMemories();
+  }
+
+  async function loadMemos() {
+    const d = await get('/memos');
+    const el = document.getElementById('memoList');
+    const items = d.memos ?? [];
+    if (!items.length) { el.innerHTML = '<div class="empty">No memos left by agents yet.</div>'; return; }
+    el.innerHTML = items.map(m => `
+      <div class="item mem" style="border-left: 3px solid ${m.urgency === 'blocker' ? 'var(--c-failed)' : m.urgency === 'warning' ? '#F59E0B' : 'var(--c-done)'}">
+        <div class="item-title" style="white-space: pre-wrap;">${esc(m.message)}</div>
+        <div class="item-meta">
+          <span style="color: ${m.urgency === 'blocker' ? 'var(--c-failed)' : m.urgency === 'warning' ? '#F59E0B' : 'var(--c-done)'}; text-transform: uppercase; font-weight: bold;">[${m.urgency}]</span> 
+          · ${esc(m.author)} · ${fmt(m.created)}
+        </div>
+      </div>`).join('');
   }
 
   function renderFail(items) {

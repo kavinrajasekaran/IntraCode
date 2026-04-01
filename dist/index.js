@@ -12,13 +12,13 @@ const server = new Server({ name: 'multi-agent-broker', version: '1.0.0' }, { ca
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({
     resources: [
         {
-            uri: 'intercode://context',
+            uri: 'interagent://context',
             name: 'Project Context',
             mimeType: 'application/json',
             description: 'The global context, including tasks, active agents, and project rules.',
         },
         {
-            uri: 'intercode://working-memory',
+            uri: 'interagent://working-memory',
             name: 'Working Memory',
             mimeType: 'application/json',
             description: 'The most recent actions taken by agents across the project.',
@@ -27,13 +27,13 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
 }));
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri;
-    if (uri === 'intercode://context') {
+    if (uri === 'interagent://context') {
         const data = getOrientation();
         return {
             contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data, null, 2) }],
         };
     }
-    else if (uri === 'intercode://working-memory') {
+    else if (uri === 'interagent://working-memory') {
         const data = listWorkingMemory();
         return {
             contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data, null, 2) }],

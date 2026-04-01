@@ -1,10 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { fileURLToPath } from 'url';
-// Resolve the project root relative to this compiled file (dist/db.js → project root)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dbPath = path.resolve(__dirname, '..', '.multi-agent-broker.db');
+// Resolve the project root relative to the VS Code workspace or active shell
+const projectRoot = process.env.INTERAGENT_WORKSPACE_ROOT || process.cwd();
+const dbPath = path.resolve(projectRoot, '.multi-agent-broker.db');
 const db = new Database(dbPath);
 // Initialization: Enable WAL mode and optimal synchronous setting
 db.exec('PRAGMA journal_mode = WAL;');
@@ -17,8 +15,8 @@ db.exec(`
     status TEXT CHECK(status IN ('pending', 'in-progress', 'done', 'failed', 'abandoned')) DEFAULT 'pending',
     assigned_agent TEXT,
     reasoning TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
+    updated_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS decision_log (
@@ -26,7 +24,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     summary TEXT NOT NULL,
     alternatives TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS failure_log (
@@ -34,7 +32,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     approach TEXT NOT NULL,
     reason TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE VIRTUAL TABLE IF NOT EXISTS failure_search USING fts5(
@@ -64,14 +62,14 @@ db.exec(`
     name TEXT,
     path TEXT UNIQUE,
     description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS working_memory (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_name TEXT,
     event_description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -79,7 +77,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     status TEXT CHECK(status IN ('active', 'completed', 'failed')) DEFAULT 'active',
     goal TEXT,
-    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
     ended_at DATETIME
   );
 
@@ -90,8 +88,8 @@ db.exec(`
     tags TEXT,
     agent_name TEXT,
     priority INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
+    updated_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
   );
 
   CREATE VIRTUAL TABLE IF NOT EXISTS memories_search USING fts5(
