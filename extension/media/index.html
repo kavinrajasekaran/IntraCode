@@ -333,7 +333,8 @@
   // ── Kanban ─────────────────────────────────────────────
   function fmt(dt) {
     if (!dt) return '';
-    return new Date(dt).toLocaleDateString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    const iso = dt.replace(' ', 'T') + (dt.endsWith('Z') ? '' : 'Z');
+    return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
   }
 
   function renderKanban(tasks) {

@@ -65,16 +65,21 @@ function setStatus(online: boolean) {
 // ---------------------------------------------------------------------------
 
 async function checkIsRunning(port: number): Promise<boolean> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(1000)
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/health`, {
+      headers: { 'Cache-Control': 'no-cache' }
+    }, (res) => {
+      res.resume(); // consume response data to free up memory
+      resolve(res.statusCode === 200);
     });
-    return res.status === 200;
-  } catch (err) {
-    return false;
-  }
+    req.on('error', () => {
+      resolve(false);
+    });
+    req.setTimeout(1000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
 }
 
 async function checkIsRunningWithRetry(port: number, attempts: number, delayMs: number): Promise<boolean> {

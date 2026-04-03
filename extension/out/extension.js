@@ -39,6 +39,7 @@ const vscode = __importStar(require("vscode"));
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const http = __importStar(require("http"));
 let brokerProcess = null;
 let statusBarItem;
 let pollTimer;
@@ -94,17 +95,21 @@ function setStatus(online) {
 // Health check + polling
 // ---------------------------------------------------------------------------
 async function checkIsRunning(port) {
-    try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
-            method: 'GET',
-            headers: { 'Cache-Control': 'no-cache' },
-            signal: AbortSignal.timeout(1000)
+    return new Promise((resolve) => {
+        const req = http.get(`http://127.0.0.1:${port}/api/health`, {
+            headers: { 'Cache-Control': 'no-cache' }
+        }, (res) => {
+            res.resume(); // consume response data to free up memory
+            resolve(res.statusCode === 200);
         });
-        return res.status === 200;
-    }
-    catch (err) {
-        return false;
-    }
+        req.on('error', () => {
+            resolve(false);
+        });
+        req.setTimeout(1000, () => {
+            req.destroy();
+            resolve(false);
+        });
+    });
 }
 async function checkIsRunningWithRetry(port, attempts, delayMs) {
     for (let i = 0; i < attempts; i++) {

@@ -129,7 +129,7 @@ export function claimTask(rawInput: unknown): object {
     const result = db
       .prepare(
         `UPDATE tasks
-         SET status = 'in-progress', assigned_agent = ?, updated_at = DATETIME('now', 'localtime')
+         SET status = 'in-progress', assigned_agent = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND status = 'pending'`
       )
       .run(agent_name, task_id);
@@ -158,7 +158,7 @@ export function updateTask(rawInput: unknown): object {
     const result = db
       .prepare(
         `UPDATE tasks
-         SET status = ?, assigned_agent = ?, reasoning = ?, updated_at = DATETIME('now', 'localtime')
+         SET status = ?, assigned_agent = ?, reasoning = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
       )
       .run(status, agent_name, notes ?? null, task_id);
@@ -238,7 +238,7 @@ export function registerArtifact(rawInput: unknown): object {
            agent_name  = excluded.agent_name,
            name        = excluded.name,
            description = excluded.description,
-           created_at  = DATETIME('now', 'localtime')`
+           created_at  = CURRENT_TIMESTAMP`
       )
       .run(agent_name, name, artifactPath, description);
 
@@ -265,7 +265,7 @@ export function storeMemory(rawInput: unknown): object {
            content = excluded.content,
            tags = excluded.tags,
            agent_name = excluded.agent_name,
-           updated_at = DATETIME('now', 'localtime')`
+           updated_at = CURRENT_TIMESTAMP`
       )
       .run(key, content, tagsString, agent_name);
 
@@ -357,7 +357,7 @@ export function endSession(rawInput: unknown): object {
     // End all active sessions for this agent
     const info = db
       .prepare(
-        `UPDATE sessions SET status = ?, ended_at = DATETIME('now', 'localtime')
+        `UPDATE sessions SET status = ?, ended_at = CURRENT_TIMESTAMP
          WHERE agent_name = ? AND status = 'active'`
       )
       .run(status, agent_name);
@@ -392,7 +392,7 @@ export function logDecision(rawInput: unknown): object {
         content    = excluded.content,
         tags       = excluded.tags,
         agent_name = excluded.agent_name,
-        updated_at = DATETIME('now', 'localtime')
+        updated_at = CURRENT_TIMESTAMP
     `).run(key, content, JSON.stringify(['decision']), agent_name);
     insertEvent(agent_name, `Logged decision: ${key}`);
     return { success: true, key };
