@@ -2,6 +2,7 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 import {
   getOrientation, createTask, claimTask, updateTask,
   logFailure, checkFailures, registerArtifact,
@@ -9,6 +10,7 @@ import {
   listTasks, listFailures, listArtifacts, listWorkingMemory, listMemories,
   readMemos, leaveMemo
 } from './tools.js';
+import { scanForProjects, invalidateProjectCache } from './scanner.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,38 +41,77 @@ async function readBody(req: http.IncomingMessage): Promise<unknown> {
   });
 }
 
+function parsePathParam(url: string, prefix: string): string | null {
+  if (!url.startsWith(prefix)) return null;
+  const encoded = url.slice(prefix.length).split('/')[0];
+  try { return decodeURIComponent(encoded); }
+  catch { return null; }
+}
+
 // ---------------------------------------------------------------------------
-// Dashboard HTML — loaded once at startup
+// Per-project DB queries (read-only snapshot for the dashboard)
+// ---------------------------------------------------------------------------
+
+function getProjectSnapshot(projectPath: string) {
+  const dbPath = path.join(projectPath, '.multi-agent-broker.db');
+  if (!fs.existsSync(dbPath)) return null;
+
+  try {
+    const db = new Database(dbPath, { readonly: true });
+    const tasks = db.prepare('SELECT * FROM tasks ORDER BY id ASC').all();
+    const memories = db.prepare("SELECT * FROM memories ORDER BY updated_at DESC LIMIT 20").all();
+    const failures = db.prepare('SELECT * FROM failure_log ORDER BY id DESC LIMIT 10').all();
+    const artifacts = db.prepare('SELECT * FROM artifact_registry ORDER BY id DESC').all();
+    const events = db.prepare('SELECT * FROM working_memory ORDER BY id DESC LIMIT 20').all();
+    const memos = db.prepare("SELECT * FROM memories WHERE tags LIKE '%\"memo\"%' ORDER BY updated_at DESC").all() as any[];
+
+    const parsedMemos = memos.map((m: any) => {
+      const tags: string[] = JSON.parse(m.tags ?? '[]');
+      const urgency = tags.find(t => ['blocker', 'warning', 'info'].includes(t)) || 'info';
+      return { key: m.key, author: m.agent_name, urgency, message: m.content, created: m.updated_at };
+    });
+
+    db.close();
+
+    const tasksByStatus: Record<string, number> = {};
+    for (const t of tasks as any[]) {
+      tasksByStatus[t.status] = (tasksByStatus[t.status] || 0) + 1;
+    }
+
+    return {
+      tasks,
+      tasksByStatus,
+      memories: memories.filter((m: any) => !JSON.parse(m.tags ?? '[]').includes('memo')),
+      failures,
+      artifacts,
+      events,
+      memos: parsedMemos,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard HTML
 // ---------------------------------------------------------------------------
 
 function loadDashboardHtml(): string {
-  // Try to find the dashboard HTML file relative to the dist directory
   const candidates = [
     path.join(__dirname, '..', 'dashboard', 'index.html'),
     path.join(__dirname, '..', 'standalone-dashboard.html'),
   ];
-
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       return fs.readFileSync(candidate, 'utf8');
     }
   }
-
-  // Fallback: return a redirect message
-  return `<!DOCTYPE html><html><body>
-    <h1>Dashboard not found</h1>
-    <p>The dashboard HTML file could not be located. API is still accessible at /api/*</p>
-  </body></html>`;
+  return `<!DOCTYPE html><html><body><h1>Dashboard not found</h1></body></html>`;
 }
 
-let dashboardHtml: string | null = null;
-
 function getDashboardHtml(port: number): string {
-  if (!dashboardHtml) {
-    dashboardHtml = loadDashboardHtml();
-  }
-  // Replace the port placeholder if present
-  return dashboardHtml.replace(/API_PORT/g, String(port));
+  // Read fresh from disk every time — no caching, so edits are instant
+  return loadDashboardHtml().replace(/API_PORT/g, String(port));
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +120,6 @@ function getDashboardHtml(port: number): string {
 
 export function startApiServer(port: number): http.Server {
   const server = http.createServer(async (req, res) => {
-    // CORS preflight
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
@@ -90,21 +130,47 @@ export function startApiServer(port: number): http.Server {
       return;
     }
 
-    const url = req.url ?? '/';
+    const url = req.url?.split('?')[0] ?? '/';
 
     try {
-      // ── Dashboard routes ────────────────────────────────────
+      // ── Dashboard ─────────────────────────────────────────
       if (url === '/' || url === '/dashboard' || url === '/dashboard/') {
         const html = getDashboardHtml(port);
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache',
-        });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
         res.end(html);
         return;
       }
 
-      // ── API routes ──────────────────────────────────────────
+      // ── Projects API ──────────────────────────────────────
+      if (url === '/api/projects' && req.method === 'GET') {
+        const projects = scanForProjects();
+        reply(res, { projects });
+        return;
+      }
+
+      if (url === '/api/projects/rescan' && req.method === 'POST') {
+        invalidateProjectCache();
+        const projects = scanForProjects();
+        reply(res, { projects });
+        return;
+      }
+
+      // /api/projects/:encodedPath/snapshot
+      const snapshotPrefix = '/api/projects/';
+      if (url.startsWith(snapshotPrefix) && url.endsWith('/snapshot')) {
+        const inner = url.slice(snapshotPrefix.length, -'/snapshot'.length);
+        try {
+          const projectPath = decodeURIComponent(inner);
+          const snapshot = getProjectSnapshot(projectPath);
+          if (!snapshot) { reply(res, { error: 'No InterAgent database found for this project.' }, 404); return; }
+          reply(res, snapshot);
+        } catch {
+          reply(res, { error: 'Invalid project path' }, 400);
+        }
+        return;
+      }
+
+      // ── Core API (current workspace) ───────────────────────
       if (url === '/api/health' && req.method === 'GET') {
         reply(res, { status: 'ok', port });
       } else if (url === '/api/orientation' && req.method === 'GET') {
@@ -161,9 +227,8 @@ export function startApiServer(port: number): http.Server {
 }
 
 // ---------------------------------------------------------------------------
-// Direct execution (backwards compat: `node dist/api-server.js [port]`)
+// Direct run compat
 // ---------------------------------------------------------------------------
-
 const isDirectRun = process.argv[1] &&
   (process.argv[1].endsWith('api-server.js') || process.argv[1].endsWith('api-server.ts'));
 
