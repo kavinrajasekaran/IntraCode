@@ -15,8 +15,8 @@ db.exec(`
     status TEXT CHECK(status IN ('pending', 'in-progress', 'done', 'failed', 'abandoned')) DEFAULT 'pending',
     assigned_agent TEXT,
     reasoning TEXT,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
-    updated_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
+    updated_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE TABLE IF NOT EXISTS decision_log (
@@ -24,7 +24,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     summary TEXT NOT NULL,
     alternatives TEXT,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE TABLE IF NOT EXISTS failure_log (
@@ -32,7 +32,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     approach TEXT NOT NULL,
     reason TEXT NOT NULL,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE VIRTUAL TABLE IF NOT EXISTS failure_search USING fts5(
@@ -62,14 +62,14 @@ db.exec(`
     name TEXT,
     path TEXT UNIQUE,
     description TEXT,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE TABLE IF NOT EXISTS working_memory (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_name TEXT,
     event_description TEXT,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -77,7 +77,7 @@ db.exec(`
     agent_name TEXT NOT NULL,
     status TEXT CHECK(status IN ('active', 'completed', 'failed')) DEFAULT 'active',
     goal TEXT,
-    started_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
+    started_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
     ended_at DATETIME
   );
 
@@ -88,8 +88,8 @@ db.exec(`
     tags TEXT,
     agent_name TEXT,
     priority INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT (DATETIME('now', 'localtime')),
-    updated_at DATETIME DEFAULT (DATETIME('now', 'localtime'))
+    created_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
+    updated_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
   );
 
   CREATE VIRTUAL TABLE IF NOT EXISTS memories_search USING fts5(

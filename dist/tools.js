@@ -88,7 +88,7 @@ export function claimTask(rawInput) {
     return safeRun(() => {
         const result = db
             .prepare(`UPDATE tasks
-         SET status = 'in-progress', assigned_agent = ?, updated_at = DATETIME('now', 'localtime')
+         SET status = 'in-progress', assigned_agent = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND status = 'pending'`)
             .run(agent_name, task_id);
         if (result.changes === 0) {
@@ -107,7 +107,7 @@ export function updateTask(rawInput) {
     return safeRun(() => {
         const result = db
             .prepare(`UPDATE tasks
-         SET status = ?, assigned_agent = ?, reasoning = ?, updated_at = DATETIME('now', 'localtime')
+         SET status = ?, assigned_agent = ?, reasoning = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`)
             .run(status, agent_name, notes ?? null, task_id);
         if (result.changes === 0) {
@@ -159,7 +159,7 @@ export function registerArtifact(rawInput) {
            agent_name  = excluded.agent_name,
            name        = excluded.name,
            description = excluded.description,
-           created_at  = DATETIME('now', 'localtime')`)
+           created_at  = CURRENT_TIMESTAMP`)
             .run(agent_name, name, artifactPath, description);
         insertEvent(agent_name, `Registered artifact '${name}' at '${artifactPath}'.`);
         return { success: true, artifact_id: info.lastInsertRowid };
@@ -179,7 +179,7 @@ export function storeMemory(rawInput) {
            content = excluded.content,
            tags = excluded.tags,
            agent_name = excluded.agent_name,
-           updated_at = DATETIME('now', 'localtime')`)
+           updated_at = CURRENT_TIMESTAMP`)
             .run(key, content, tagsString, agent_name);
         insertEvent(agent_name, `Stored memory: ${key}`);
         return { success: true, memory_id: info.lastInsertRowid };
@@ -249,7 +249,7 @@ export function endSession(rawInput) {
     return safeRun(() => {
         // End all active sessions for this agent
         const info = db
-            .prepare(`UPDATE sessions SET status = ?, ended_at = DATETIME('now', 'localtime')
+            .prepare(`UPDATE sessions SET status = ?, ended_at = CURRENT_TIMESTAMP
          WHERE agent_name = ? AND status = 'active'`)
             .run(status, agent_name);
         insertEvent(agent_name, `Ended active session(s) with status: ${status}`);
@@ -278,7 +278,7 @@ export function logDecision(rawInput) {
         content    = excluded.content,
         tags       = excluded.tags,
         agent_name = excluded.agent_name,
-        updated_at = DATETIME('now', 'localtime')
+        updated_at = CURRENT_TIMESTAMP
     `).run(key, content, JSON.stringify(['decision']), agent_name);
         insertEvent(agent_name, `Logged decision: ${key}`);
         return { success: true, key };

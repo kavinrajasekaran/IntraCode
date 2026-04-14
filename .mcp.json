@@ -2,7 +2,7 @@
   "mcpServers": {
     "interagent-broker": {
       "command": "node",
-      "args": ["/Users/kavinrajasekaran/Desktop/Projects/IntraCode/dist/index.js"]
+      "args": ["/Users/kavinrajasekaran/Desktop/Projects/IntraCode/dist/cli.js", "mcp"]
     }
   }
 }
